@@ -1,0 +1,1075 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f6f2">
+  <title>图片修复室 · 本地去水印工具</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #202820;
+      --muted: #737d72;
+      --paper: #f5f6f2;
+      --card: #fff;
+      --green: #376b50;
+      --green-dark: #28523c;
+      --green-soft: #e8f0e8;
+      --line: #e5e9e1;
+      --shadow: 0 18px 55px rgba(37, 55, 39, .09);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      padding: 38px 20px;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at 8% 8%, rgba(108, 151, 110, .1), transparent 28%),
+        radial-gradient(ellipse at 93% 94%, rgba(218, 183, 128, .12), transparent 30%),
+        var(--paper);
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+    }
+
+    button, input { font: inherit; }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid rgba(55, 107, 80, .25);
+      outline-offset: 2px;
+    }
+
+    .app { width: min(100%, 1120px); margin: 0 auto; }
+    .header { margin: 0 0 22px; }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .14em;
+    }
+    h1 { margin: 0; font-size: clamp(26px, 5vw, 36px); letter-spacing: .02em; }
+    .subtitle { margin: 9px 0 0; color: var(--muted); font-size: 14px; line-height: 1.7; }
+    .mode-tabs {
+      display: inline-flex;
+      gap: 4px;
+      margin-top: 20px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .75);
+    }
+    .mode-tabs button { min-height: 36px; border-color: transparent; background: transparent; }
+    .mode-tabs button[aria-pressed="true"] { border-color: var(--line); background: white; box-shadow: 0 1px 3px rgba(30, 45, 30, .08); }
+
+    .editor {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px 18px;
+      padding: 17px 20px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .toolbar-group { display: flex; align-items: center; gap: 9px; }
+    .toolbar-group label { color: #526057; font-size: 13px; font-weight: 650; }
+    .brush-size { width: 120px; accent-color: var(--green); }
+    .size-value { min-width: 38px; color: var(--muted); font-size: 13px; text-align: right; }
+    button {
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--ink);
+      background: white;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 650;
+      transition: background .16s, border-color .16s, transform .16s;
+    }
+    button:hover:not(:disabled) { border-color: #b7c8b8; background: #f7faf6; }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    button.primary { border-color: var(--green); color: white; background: var(--green); }
+    button.primary:hover:not(:disabled) { border-color: var(--green-dark); background: var(--green-dark); }
+    button.selected { border-color: var(--green); color: var(--green-dark); background: var(--green-soft); }
+    .toolbar-spacer { flex: 1; }
+    [hidden] { display: none !important; }
+    .page-controls { gap: 10px; }
+    #page-label { min-width: 62px; color: var(--muted); font-size: 13px; text-align: center; }
+
+    .stage {
+      position: relative;
+      display: grid;
+      min-height: min(62vh, 620px);
+      place-items: center;
+      overflow: hidden;
+      padding: 22px;
+      background-color: #f3f4f1;
+      background-image: linear-gradient(45deg, #e9ebe7 25%, transparent 25%),
+        linear-gradient(-45deg, #e9ebe7 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e9ebe7 75%),
+        linear-gradient(-45deg, transparent 75%, #e9ebe7 75%);
+      background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+      background-size: 18px 18px;
+    }
+
+    .stage.dragging { outline: 3px dashed var(--green); outline-offset: -10px; }
+    .stage.selecting #image-canvas { cursor: crosshair; }
+    #image-canvas, #pdf-canvas {
+      display: none;
+      max-width: 100%;
+      max-height: calc(62vh - 44px);
+      touch-action: none;
+      cursor: crosshair;
+      box-shadow: 0 3px 18px rgba(20, 30, 20, .13);
+    }
+
+    .empty-state { max-width: 380px; padding: 24px; text-align: center; }
+    .upload-icon {
+      display: grid;
+      width: 62px;
+      height: 62px;
+      margin: 0 auto 17px;
+      place-items: center;
+      border-radius: 20px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 27px;
+    }
+    .empty-state h2 { margin: 0; font-size: 20px; }
+    .empty-state p { margin: 9px 0 18px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+
+    .statusbar {
+      display: flex;
+      min-height: 54px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    #status { margin: 0; }
+    #image-info { flex: 0 0 auto; text-align: right; }
+    #status[data-kind="error"] { color: #a64e32; }
+    #status[data-kind="success"] { color: var(--green-dark); }
+    .privacy {
+      margin: 15px 4px 0;
+      color: #7d857b;
+      font-size: 12px;
+      line-height: 1.7;
+      text-align: center;
+    }
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      clip-path: inset(50%);
+    }
+
+    @media (max-width: 650px) {
+      body { padding: 24px 12px; }
+      .mode-tabs { margin-top: 15px; }
+      .toolbar { gap: 11px; padding: 14px; }
+      .toolbar-spacer { display: none; }
+      .toolbar-group:first-child { width: 100%; }
+      .stage { min-height: 48vh; padding: 12px; }
+      #image-canvas { max-height: calc(48vh - 24px); }
+      .statusbar { align-items: flex-start; padding: 11px 14px; }
+      #image-info { max-width: 40%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <p class="eyebrow">LOCAL IMAGE EDITOR</p>
+      <h1>图片修复室</h1>
+      <p class="subtitle">在浏览器中修复图片，或框选 PDF 上的水印区域并遮盖。</p>
+    </header>
+
+    <div class="mode-tabs" role="group" aria-label="文件类型">
+      <button id="image-mode-button" type="button" aria-pressed="true">图片修复</button>
+      <button id="pdf-mode-button" type="button" aria-pressed="false">PDF 遮盖</button>
+    </div>
+
+    <section class="editor" aria-label="图片修复工具">
+      <div class="toolbar" id="image-toolbar" role="toolbar" aria-label="图片修复工具">
+        <div class="toolbar-group">
+          <label for="brush-size">笔刷大小</label>
+          <input class="brush-size" id="brush-size" type="range" min="8" max="120" value="36" disabled>
+          <span class="size-value" id="size-value">36 px</span>
+        </div>
+        <button id="sample-button" type="button" aria-pressed="false" disabled>选择取样点</button>
+        <button id="undo-button" type="button" disabled>撤销</button>
+        <button id="reset-button" type="button" disabled>重置图片</button>
+        <span class="toolbar-spacer"></span>
+        <button id="download-button" class="primary" type="button" disabled>下载修复图片</button>
+      </div>
+
+      <div class="toolbar" id="pdf-toolbar" role="toolbar" aria-label="PDF 遮盖工具" hidden>
+        <div class="toolbar-group page-controls">
+          <button id="previous-page-button" type="button" disabled>上一页</button>
+          <span id="page-label">第 — / — 页</span>
+          <button id="next-page-button" type="button" disabled>下一页</button>
+        </div>
+        <button id="auto-detect-button" type="button" disabled>识别扫描王水印</button>
+        <button id="select-area-button" type="button" aria-pressed="false" disabled>框选水印区域</button>
+        <button id="pdf-undo-button" type="button" disabled>撤销</button>
+        <button id="clear-pdf-button" type="button" disabled>清除全部遮盖</button>
+        <span class="toolbar-spacer"></span>
+        <button id="export-pdf-button" class="primary" type="button" disabled>导出 PDF</button>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="empty-state" id="empty-state">
+          <div class="upload-icon" aria-hidden="true">＋</div>
+          <h2 id="empty-title">从一张图片开始</h2>
+          <p id="empty-description">选择图片或拖到这里。图片会在你的浏览器中本地处理。</p>
+          <button id="upload-button" class="primary" type="button">选择图片</button>
+        </div>
+        <canvas id="image-canvas" aria-label="图片编辑画布"></canvas>
+      </div>
+
+      <div class="statusbar">
+        <p id="status" role="status" aria-live="polite">提示：选择取样点后，在图片上点击干净的区域。</p>
+        <span id="image-info"></span>
+      </div>
+    </section>
+    <p class="privacy" id="privacy-note">请仅处理你有权修改的文件。自动识别常见的扫描王页脚二维码标记；未命中时可手动框选。文件不会上传；PDF 导出会栅格化页面，文字不再可搜索。首次使用 PDF 功能需联网加载处理库。</p>
+    <input class="visually-hidden" id="file-input" type="file" accept="image/*">
+  </main>
+
+  <script>
+    (() => {
+      const fileInput = document.getElementById("file-input");
+      const uploadButton = document.getElementById("upload-button");
+      const imageModeButton = document.getElementById("image-mode-button");
+      const pdfModeButton = document.getElementById("pdf-mode-button");
+      const imageToolbar = document.getElementById("image-toolbar");
+      const pdfToolbar = document.getElementById("pdf-toolbar");
+      const stage = document.getElementById("stage");
+      const canvas = document.getElementById("image-canvas");
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      const pdfCanvas = document.createElement("canvas");
+      pdfCanvas.id = "pdf-canvas";
+      pdfCanvas.setAttribute("aria-label", "PDF 页面预览");
+      pdfCanvas.style.display = "none";
+      stage.appendChild(pdfCanvas);
+      const pdfContext = pdfCanvas.getContext("2d", { willReadFrequently: true });
+      const sourceCanvas = document.createElement("canvas");
+      const sourceContext = sourceCanvas.getContext("2d");
+      const emptyState = document.getElementById("empty-state");
+      const emptyTitle = document.getElementById("empty-title");
+      const emptyDescription = document.getElementById("empty-description");
+      const brushSize = document.getElementById("brush-size");
+      const sizeValue = document.getElementById("size-value");
+      const sampleButton = document.getElementById("sample-button");
+      const undoButton = document.getElementById("undo-button");
+      const resetButton = document.getElementById("reset-button");
+      const downloadButton = document.getElementById("download-button");
+      const status = document.getElementById("status");
+      const imageInfo = document.getElementById("image-info");
+      const previousPageButton = document.getElementById("previous-page-button");
+      const nextPageButton = document.getElementById("next-page-button");
+      const pageLabel = document.getElementById("page-label");
+      const autoDetectButton = document.getElementById("auto-detect-button");
+      const selectAreaButton = document.getElementById("select-area-button");
+      const pdfUndoButton = document.getElementById("pdf-undo-button");
+      const clearPdfButton = document.getElementById("clear-pdf-button");
+      const exportPdfButton = document.getElementById("export-pdf-button");
+
+      let mode = "image";
+      let imageLoaded = false;
+      let imageFileName = "image";
+      let samplePoint = null;
+      let selectingSample = false;
+      let drawing = false;
+      let previousPoint = null;
+      let strokeOffset = null;
+      let undoStack = [];
+      let pdfDocument = null;
+      let pdfFileName = "document";
+      let pdfPageNumber = 1;
+      let pdfPageCount = 0;
+      let pdfPageView = null;
+      let pdfBasePixels = null;
+      let pdfPreviewScale = 1;
+      let pdfRects = new Map();
+      let pdfUndoStack = [];
+      let selectingPdfArea = false;
+      let drawingPdfArea = false;
+      let pdfSelectionStart = null;
+      let pdfSelectionDraft = null;
+      let pdfRenderTask = null;
+      let pdfRenderToken = 0;
+      let pdfLoadToken = 0;
+      let pdfJsPromise = null;
+      let pdfLibPromise = null;
+
+      function setStatus(message, kind = "") {
+        status.textContent = message;
+        status.dataset.kind = kind;
+      }
+
+      function setEditorEnabled(enabled) {
+        brushSize.disabled = !enabled;
+        sampleButton.disabled = !enabled;
+        resetButton.disabled = !enabled;
+        downloadButton.disabled = !enabled;
+        undoButton.disabled = !enabled || undoStack.length === 0;
+      }
+
+      function updateCanvasDisplaySize() {
+        if (mode === "pdf") {
+          if (!pdfDocument) return;
+          updatePdfCanvasDisplaySize();
+          return;
+        }
+        if (!imageLoaded) return;
+        const availableWidth = Math.max(100, stage.clientWidth - 44);
+        const availableHeight = Math.max(100, stage.clientHeight - 44);
+        const scale = Math.min(1, availableWidth / canvas.width, availableHeight / canvas.height);
+        canvas.style.width = `${Math.round(canvas.width * scale)}px`;
+        canvas.style.height = `${Math.round(canvas.height * scale)}px`;
+      }
+
+      function updatePdfCanvasDisplaySize() {
+        const availableWidth = Math.max(100, stage.clientWidth - 44);
+        const availableHeight = Math.max(100, stage.clientHeight - 44);
+        const scale = Math.min(1, availableWidth / pdfCanvas.width, availableHeight / pdfCanvas.height);
+        pdfCanvas.style.width = `${Math.round(pdfCanvas.width * scale)}px`;
+        pdfCanvas.style.height = `${Math.round(pdfCanvas.height * scale)}px`;
+      }
+
+      function updateEmptyState() {
+        const hasCurrentDocument = mode === "image" ? imageLoaded : Boolean(pdfDocument);
+        emptyState.hidden = hasCurrentDocument;
+        canvas.style.display = mode === "image" && imageLoaded ? "block" : "none";
+        pdfCanvas.style.display = mode === "pdf" && pdfDocument ? "block" : "none";
+      }
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        const pdfMode = mode === "pdf";
+        imageModeButton.setAttribute("aria-pressed", String(!pdfMode));
+        pdfModeButton.setAttribute("aria-pressed", String(pdfMode));
+        imageToolbar.hidden = pdfMode;
+        pdfToolbar.hidden = !pdfMode;
+        fileInput.accept = pdfMode ? "application/pdf,.pdf" : "image/*";
+        uploadButton.textContent = pdfMode ? "选择 PDF 文件" : "选择图片";
+        emptyTitle.textContent = pdfMode ? "从一份 PDF 开始" : "从一张图片开始";
+        emptyDescription.textContent = pdfMode
+          ? "选择 PDF 或拖到这里。框选要遮盖的区域后，可导出新的 PDF 文件。"
+          : "选择图片或拖到这里。图片会在你的浏览器中本地处理。";
+        imageInfo.textContent = pdfMode && pdfDocument
+          ? `${pdfPageCount} 页 · 第 ${pdfPageNumber} 页已添加 ${pdfRects.get(pdfPageNumber)?.length || 0} 处遮盖`
+          : !pdfMode && imageLoaded ? `${canvas.width} × ${canvas.height}` : "";
+        updateEmptyState();
+        requestAnimationFrame(updateCanvasDisplaySize);
+        if (pdfMode) {
+          setStatus(pdfDocument
+            ? "可自动识别扫描王页脚二维码标记，也可框选要遮盖的区域。"
+            : "选择 PDF 后框选要遮盖的区域；PDF 内容只在本地处理。");
+        } else if (imageLoaded) {
+          setStatus("先点“选择取样点”，再在图片干净区域点击取样。按住 Alt 点击也可快速取样。");
+        } else {
+          setStatus("提示：选择取样点后，在图片上点击干净的区域。");
+        }
+      }
+
+      function loadScript(source, isReady) {
+        if (isReady()) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = source;
+          script.onload = () => isReady()
+            ? resolve()
+            : reject(new Error("PDF 处理库加载后不可用。"));
+          script.onerror = () => reject(new Error("无法加载 PDF 处理库，请检查网络连接后重试。"));
+          document.head.appendChild(script);
+        });
+      }
+
+      function ensurePdfJs() {
+        if (!pdfJsPromise) {
+          pdfJsPromise = loadScript(
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+            () => Boolean(window.pdfjsLib)
+          ).then(() => {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+              "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+            return window.pdfjsLib;
+          }).catch((error) => {
+            pdfJsPromise = null;
+            throw error;
+          });
+        }
+        return pdfJsPromise;
+      }
+
+      function ensurePdfLib() {
+        if (!pdfLibPromise) {
+          pdfLibPromise = loadScript(
+            "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js",
+            () => Boolean(window.PDFLib)
+          ).then(() => window.PDFLib).catch((error) => {
+            pdfLibPromise = null;
+            throw error;
+          });
+        }
+        return pdfLibPromise;
+      }
+
+      function loadImage(file) {
+        if (!file || !file.type.startsWith("image/")) {
+          setStatus("请选择有效的图片文件。", "error");
+          return;
+        }
+
+        const imageUrl = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(imageUrl);
+          if (!image.naturalWidth || !image.naturalHeight) {
+            setStatus("无法读取这张图片，请换一个文件试试。", "error");
+            return;
+          }
+
+          canvas.width = image.naturalWidth;
+          canvas.height = image.naturalHeight;
+          sourceCanvas.width = image.naturalWidth;
+          sourceCanvas.height = image.naturalHeight;
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          sourceContext.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+          context.drawImage(image, 0, 0);
+          sourceContext.drawImage(image, 0, 0);
+
+          imageLoaded = true;
+          imageFileName = file.name.replace(/\.[^.]+$/, "") || "image";
+          samplePoint = null;
+          selectingSample = false;
+          undoStack = [];
+          emptyState.hidden = true;
+          canvas.style.display = "block";
+          sampleButton.classList.remove("selected");
+          sampleButton.setAttribute("aria-pressed", "false");
+          setEditorEnabled(true);
+          imageInfo.textContent = `${canvas.width} × ${canvas.height}`;
+          setStatus("先点“选择取样点”，再在图片干净区域点击取样。按住 Alt 点击也可快速取样。");
+          requestAnimationFrame(updateCanvasDisplaySize);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(imageUrl);
+          setStatus("图片加载失败，请尝试 PNG、JPEG 或 WebP 格式。", "error");
+        };
+        image.src = imageUrl;
+      }
+
+      async function loadPdf(file) {
+        const loadToken = ++pdfLoadToken;
+        setStatus("正在本地打开 PDF…");
+        try {
+          const pdfjs = await ensurePdfJs();
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          const loadedDocument = await pdfjs.getDocument({ data: bytes }).promise;
+          if (loadToken !== pdfLoadToken) {
+            await loadedDocument.destroy();
+            return;
+          }
+          if (pdfDocument) await pdfDocument.destroy();
+          pdfDocument = loadedDocument;
+          pdfFileName = file.name.replace(/\.pdf$/i, "") || "document";
+          pdfPageNumber = 1;
+          pdfPageCount = pdfDocument.numPages;
+          pdfRects = new Map();
+          pdfUndoStack = [];
+          pdfPageView = null;
+          pdfSelectionDraft = null;
+          updatePdfControls();
+          updateEmptyState();
+          await renderPdfPage();
+          setStatus("点击“识别扫描王水印”自动查找页脚二维码标记，或手动框选要遮盖的区域。", "success");
+        } catch (error) {
+          if (loadToken !== pdfLoadToken) return;
+          setStatus(error.message || "PDF 打开失败。文件可能受密码保护或格式不受支持。", "error");
+        }
+      }
+
+      function updatePdfControls() {
+        const loaded = Boolean(pdfDocument);
+        previousPageButton.disabled = !loaded || pdfPageNumber <= 1;
+        nextPageButton.disabled = !loaded || pdfPageNumber >= pdfPageCount;
+        autoDetectButton.disabled = !loaded;
+        selectAreaButton.disabled = !loaded;
+        pdfUndoButton.disabled = pdfUndoStack.length === 0;
+        clearPdfButton.disabled = !loaded || pdfUndoStack.length === 0;
+        exportPdfButton.disabled = !loaded;
+        pageLabel.textContent = loaded ? `第 ${pdfPageNumber} / ${pdfPageCount} 页` : "第 — / — 页";
+      }
+
+      function drawPdfOverlays() {
+        if (!pdfPageView || !pdfBasePixels) return;
+        pdfContext.putImageData(pdfBasePixels, 0, 0);
+        const scale = pdfPreviewScale;
+        const rectangles = pdfRects.get(pdfPageNumber) || [];
+        for (const rect of rectangles) {
+          pdfContext.fillStyle = "#fff";
+          pdfContext.fillRect(rect.x * scale, rect.y * scale, rect.width * scale, rect.height * scale);
+        }
+        if (pdfSelectionDraft) {
+          pdfContext.fillStyle = "rgba(55, 107, 80, .2)";
+          pdfContext.strokeStyle = "#28523c";
+          pdfContext.lineWidth = Math.max(2, 2 * scale);
+          pdfContext.setLineDash([6 * scale, 4 * scale]);
+          pdfContext.fillRect(
+            pdfSelectionDraft.x * scale, pdfSelectionDraft.y * scale,
+            pdfSelectionDraft.width * scale, pdfSelectionDraft.height * scale
+          );
+          pdfContext.strokeRect(
+            pdfSelectionDraft.x * scale, pdfSelectionDraft.y * scale,
+            pdfSelectionDraft.width * scale, pdfSelectionDraft.height * scale
+          );
+          pdfContext.setLineDash([]);
+        }
+      }
+
+      async function renderPdfPage() {
+        if (!pdfDocument) return;
+        const renderToken = ++pdfRenderToken;
+        if (pdfRenderTask) {
+          pdfRenderTask.cancel();
+          try {
+            await pdfRenderTask.promise;
+          } catch (error) {
+            if (error.name !== "RenderingCancelledException") throw error;
+          }
+          pdfRenderTask = null;
+        }
+
+        const page = await pdfDocument.getPage(pdfPageNumber);
+        if (renderToken !== pdfRenderToken) return;
+        pdfPageView = page.getViewport({ scale: 1 });
+        pdfPreviewScale = Math.min(1.5, 1800 / Math.max(pdfPageView.width, pdfPageView.height));
+        const viewport = page.getViewport({ scale: pdfPreviewScale });
+        pdfCanvas.width = Math.ceil(viewport.width);
+        pdfCanvas.height = Math.ceil(viewport.height);
+        pdfPageView = page.getViewport({ scale: 1 });
+        pdfSelectionDraft = null;
+        const task = page.render({ canvasContext: pdfContext, viewport, background: "#ffffff" });
+        pdfRenderTask = task;
+        try {
+          await task.promise;
+          if (renderToken !== pdfRenderToken) return;
+          pdfBasePixels = pdfContext.getImageData(0, 0, pdfCanvas.width, pdfCanvas.height);
+          drawPdfOverlays();
+          updatePdfCanvasDisplaySize();
+          imageInfo.textContent = `${pdfPageCount} 页 · 第 ${pdfPageNumber} 页已添加 ${pdfRects.get(pdfPageNumber)?.length || 0} 处遮盖`;
+        } catch (error) {
+          if (error.name !== "RenderingCancelledException") throw error;
+        } finally {
+          if (pdfRenderTask === task) pdfRenderTask = null;
+        }
+      }
+
+      function getPdfPoint(event) {
+        const point = getCanvasPoint(event, pdfCanvas);
+        return {
+          x: Math.max(0, Math.min(pdfPageView.width, point.x / pdfPreviewScale)),
+          y: Math.max(0, Math.min(pdfPageView.height, point.y / pdfPreviewScale))
+        };
+      }
+
+      function findFooterQrMark(canvasElement, scale) {
+        const width = canvasElement.width;
+        const height = canvasElement.height;
+        const xStart = Math.floor(width * .6);
+        const yStart = Math.floor(height * .84);
+        const regionWidth = width - xStart;
+        const regionHeight = height - yStart;
+        const pixels = canvasElement.getContext("2d").getImageData(
+          xStart, yStart, regionWidth, regionHeight
+        ).data;
+        const mask = new Uint8Array(regionWidth * regionHeight);
+
+        for (let index = 0, pixel = 0; index < mask.length; index += 1, pixel += 4) {
+          if (Math.max(pixels[pixel], pixels[pixel + 1], pixels[pixel + 2]) < 225) {
+            mask[index] = 1;
+          }
+        }
+
+        const candidates = [];
+        for (let index = 0; index < mask.length; index += 1) {
+          if (!mask[index]) continue;
+          const pending = [index];
+          mask[index] = 0;
+          let minX = regionWidth;
+          let minY = regionHeight;
+          let maxX = 0;
+          let maxY = 0;
+          let pixelCount = 0;
+
+          while (pending.length) {
+            const point = pending.pop();
+            const x = point % regionWidth;
+            const y = Math.floor(point / regionWidth);
+            pixelCount += 1;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+
+            for (let dy = -1; dy <= 1; dy += 1) {
+              for (let dx = -1; dx <= 1; dx += 1) {
+                const nextX = x + dx;
+                const nextY = y + dy;
+                if (nextX < 0 || nextX >= regionWidth || nextY < 0 || nextY >= regionHeight) continue;
+                const nextIndex = nextY * regionWidth + nextX;
+                if (mask[nextIndex]) {
+                  mask[nextIndex] = 0;
+                  pending.push(nextIndex);
+                }
+              }
+            }
+          }
+
+          const boxWidth = maxX - minX + 1;
+          const boxHeight = maxY - minY + 1;
+          const pageX = xStart + minX;
+          const pageY = yStart + minY;
+          const ratio = boxWidth / boxHeight;
+          const density = pixelCount / (boxWidth * boxHeight);
+          if (
+            boxWidth < Math.max(16, width * .022) || boxWidth > width * .12 ||
+            boxHeight < Math.max(16, height * .018) || boxHeight > height * .1 ||
+            ratio < .65 || ratio > 1.55 ||
+            density < .08 || density > .97 || pixelCount < 80 ||
+            pageX < width * .64 || pageY + boxHeight < height * .94
+          ) continue;
+
+          const padding = 8;
+          const left = Math.max(0, pageX - padding) / scale;
+          const top = Math.max(0, pageY - padding) / scale;
+          const right = Math.min(width, pageX + boxWidth + padding) / scale;
+          const bottom = Math.min(height, pageY + boxHeight + padding) / scale;
+          candidates.push({
+            x: left,
+            y: top,
+            width: right - left,
+            height: bottom - top
+          });
+        }
+        return candidates;
+      }
+
+      async function autoDetectWatermarks() {
+        if (!pdfDocument) return;
+        autoDetectButton.disabled = true;
+        const analysisCanvas = document.createElement("canvas");
+        const analysisContext = analysisCanvas.getContext("2d", { willReadFrequently: true });
+        let pagesWithMatches = 0;
+        let totalMatches = 0;
+
+        try {
+          for (let pageNumber = 1; pageNumber <= pdfPageCount; pageNumber += 1) {
+            setStatus(`正在识别扫描王水印：第 ${pageNumber} / ${pdfPageCount} 页…`);
+            const page = await pdfDocument.getPage(pageNumber);
+            const pageView = page.getViewport({ scale: 1 });
+            const scale = Math.min(1.5, 1500 / Math.max(pageView.width, pageView.height));
+            const viewport = page.getViewport({ scale });
+            analysisCanvas.width = Math.ceil(viewport.width);
+            analysisCanvas.height = Math.ceil(viewport.height);
+            await page.render({
+              canvasContext: analysisContext,
+              viewport,
+              background: "#ffffff"
+            }).promise;
+
+            const matches = findFooterQrMark(analysisCanvas, scale);
+            if (matches.length) {
+              const existing = pdfRects.get(pageNumber) || [];
+              existing.push(...matches);
+              pdfRects.set(pageNumber, existing);
+              for (const rect of matches) pdfUndoStack.push({ pageNumber, rect });
+              pagesWithMatches += 1;
+              totalMatches += matches.length;
+            }
+          }
+
+          updatePdfControls();
+          await renderPdfPage();
+          if (totalMatches) {
+            setStatus(
+              `已识别并遮盖 ${totalMatches} 个扫描王水印候选（共 ${pagesWithMatches} 页）。请检查各页；其他水印可继续手动框选。`,
+              "success"
+            );
+          } else {
+            setStatus("未找到符合特征的扫描王水印。可用“框选水印区域”手动遮盖，或检查水印是否位于页面其他位置。");
+          }
+        } catch (error) {
+          setStatus(error.message || "自动识别失败，请尝试手动框选水印区域。", "error");
+        } finally {
+          analysisCanvas.width = 0;
+          analysisCanvas.height = 0;
+          updatePdfControls();
+        }
+      }
+
+      function handleFile(file) {
+        if (!file) return;
+        if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+          setMode("pdf");
+          loadPdf(file);
+          return;
+        }
+        if (file.type.startsWith("image/")) {
+          setMode("image");
+          loadImage(file);
+          return;
+        }
+        setStatus("请选择有效的图片或 PDF 文件。", "error");
+      }
+
+      function blobFromCanvas(targetCanvas) {
+        return new Promise((resolve, reject) => {
+          targetCanvas.toBlob((blob) => blob
+            ? resolve(blob)
+            : reject(new Error("页面图像生成失败，请尝试较小的 PDF 文件。")), "image/png");
+        });
+      }
+
+      async function exportPdf() {
+        if (!pdfDocument) return;
+        exportPdfButton.disabled = true;
+        try {
+          const PDFLib = await ensurePdfLib();
+          const output = await PDFLib.PDFDocument.create();
+          const outputCanvas = document.createElement("canvas");
+          const outputContext = outputCanvas.getContext("2d");
+          for (let pageNumber = 1; pageNumber <= pdfPageCount; pageNumber += 1) {
+            setStatus(`正在生成 PDF：第 ${pageNumber} / ${pdfPageCount} 页…`);
+            const page = await pdfDocument.getPage(pageNumber);
+            const pageView = page.getViewport({ scale: 1 });
+            const scale = Math.min(2, 2400 / Math.max(pageView.width, pageView.height));
+            const viewport = page.getViewport({ scale });
+            outputCanvas.width = Math.ceil(viewport.width);
+            outputCanvas.height = Math.ceil(viewport.height);
+            await page.render({
+              canvasContext: outputContext,
+              viewport,
+              background: "#ffffff"
+            }).promise;
+
+            const scaleX = outputCanvas.width / pageView.width;
+            const scaleY = outputCanvas.height / pageView.height;
+            for (const rect of pdfRects.get(pageNumber) || []) {
+              outputContext.fillStyle = "#fff";
+              outputContext.fillRect(
+                rect.x * scaleX, rect.y * scaleY,
+                rect.width * scaleX, rect.height * scaleY
+              );
+            }
+
+            const png = await blobFromCanvas(outputCanvas);
+            const image = await output.embedPng(new Uint8Array(await png.arrayBuffer()));
+            const outputPage = output.addPage([pageView.width, pageView.height]);
+            outputPage.drawImage(image, {
+              x: 0, y: 0, width: pageView.width, height: pageView.height
+            });
+          }
+
+          const bytes = await output.save();
+          const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${pdfFileName}-已遮盖.pdf`;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setStatus("PDF 已导出。页面已栅格化，因此文字不可搜索或复制。", "success");
+        } catch (error) {
+          setStatus(error.message || "PDF 导出失败，请尝试较小的文件。", "error");
+        } finally {
+          exportPdfButton.disabled = !pdfDocument;
+        }
+      }
+
+      function getCanvasPoint(event, targetCanvas = canvas) {
+        const rect = targetCanvas.getBoundingClientRect();
+        return {
+          x: (event.clientX - rect.left) * targetCanvas.width / rect.width,
+          y: (event.clientY - rect.top) * targetCanvas.height / rect.height
+        };
+      }
+
+      function saveUndoSnapshot() {
+        const maxSnapshots = canvas.width * canvas.height > 12000000 ? 1 : 3;
+        undoStack.push(context.getImageData(0, 0, canvas.width, canvas.height));
+        if (undoStack.length > maxSnapshots) undoStack.shift();
+        undoButton.disabled = false;
+      }
+
+      function stamp(x, y) {
+        const radius = Number(brushSize.value) / 2;
+        const sourceX = x + strokeOffset.x;
+        const sourceY = y + strokeOffset.y;
+        context.save();
+        context.beginPath();
+        context.arc(x, y, radius, 0, Math.PI * 2);
+        context.clip();
+        context.drawImage(
+          sourceCanvas,
+          sourceX - radius, sourceY - radius, radius * 2, radius * 2,
+          x - radius, y - radius, radius * 2, radius * 2
+        );
+        context.restore();
+      }
+
+      function paintTo(point) {
+        if (!previousPoint) {
+          stamp(point.x, point.y);
+          previousPoint = point;
+          return;
+        }
+
+        const dx = point.x - previousPoint.x;
+        const dy = point.y - previousPoint.y;
+        const distance = Math.hypot(dx, dy);
+        const spacing = Math.max(2, Number(brushSize.value) * .18);
+        const steps = Math.ceil(distance / spacing);
+        for (let step = 1; step <= steps; step += 1) {
+          const ratio = step / steps;
+          stamp(previousPoint.x + dx * ratio, previousPoint.y + dy * ratio);
+        }
+        previousPoint = point;
+      }
+
+      uploadButton.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", () => {
+        if (fileInput.files.length) handleFile(fileInput.files[0]);
+        fileInput.value = "";
+      });
+      imageModeButton.addEventListener("click", () => setMode("image"));
+      pdfModeButton.addEventListener("click", () => setMode("pdf"));
+
+      sampleButton.addEventListener("click", () => {
+        if (!imageLoaded) return;
+        selectingSample = !selectingSample;
+        sampleButton.classList.toggle("selected", selectingSample);
+        sampleButton.setAttribute("aria-pressed", String(selectingSample));
+        setStatus(selectingSample
+          ? "点击图片中没有水印、颜色和纹理相近的位置来取样。"
+          : samplePoint ? "取样点已就绪，可以在要修复的位置拖动仿制笔。" : "先选择一个取样点再开始修复。");
+      });
+
+      autoDetectButton.addEventListener("click", autoDetectWatermarks);
+
+      brushSize.addEventListener("input", () => {
+        sizeValue.textContent = `${brushSize.value} px`;
+      });
+
+      canvas.addEventListener("pointerdown", (event) => {
+        if (mode !== "image" || !imageLoaded) return;
+        event.preventDefault();
+        const point = getCanvasPoint(event);
+        if (selectingSample || event.altKey) {
+          samplePoint = point;
+          selectingSample = false;
+          sampleButton.classList.remove("selected");
+          sampleButton.setAttribute("aria-pressed", "false");
+          setStatus("取样点已设置。拖动仿制笔覆盖要修复的区域；复杂背景可多次重新取样。", "success");
+          return;
+        }
+        if (!samplePoint) {
+          setStatus("请先选择取样点：点击“选择取样点”，再点图片上的干净区域。", "error");
+          return;
+        }
+
+        saveUndoSnapshot();
+        drawing = true;
+        previousPoint = null;
+        strokeOffset = { x: samplePoint.x - point.x, y: samplePoint.y - point.y };
+        canvas.setPointerCapture(event.pointerId);
+        paintTo(point);
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (mode === "image" && drawing) paintTo(getCanvasPoint(event));
+      });
+
+      function finishStroke() {
+        if (!drawing) return;
+        drawing = false;
+        previousPoint = null;
+      }
+      canvas.addEventListener("pointerup", finishStroke);
+      canvas.addEventListener("pointercancel", finishStroke);
+      canvas.addEventListener("lostpointercapture", finishStroke);
+
+      selectAreaButton.addEventListener("click", () => {
+        if (!pdfDocument) return;
+        selectingPdfArea = !selectingPdfArea;
+        selectAreaButton.classList.toggle("selected", selectingPdfArea);
+        selectAreaButton.setAttribute("aria-pressed", String(selectingPdfArea));
+        stage.classList.toggle("selecting", selectingPdfArea);
+        setStatus(selectingPdfArea
+          ? "在当前 PDF 页面上按住鼠标并拖动，框选要遮盖的区域。"
+          : "框选已关闭。可翻页继续添加遮盖。");
+      });
+
+      pdfCanvas.addEventListener("pointerdown", (event) => {
+        if (mode !== "pdf" || !pdfDocument) return;
+        if (!selectingPdfArea) {
+          setStatus("先点击“框选水印区域”，再在页面上拖动选择。");
+          return;
+        }
+        event.preventDefault();
+        drawingPdfArea = true;
+        pdfSelectionStart = getPdfPoint(event);
+        pdfSelectionDraft = { x: pdfSelectionStart.x, y: pdfSelectionStart.y, width: 0, height: 0 };
+        pdfCanvas.setPointerCapture(event.pointerId);
+      });
+
+      pdfCanvas.addEventListener("pointermove", (event) => {
+        if (!drawingPdfArea || !pdfSelectionStart) return;
+        const point = getPdfPoint(event);
+        pdfSelectionDraft = {
+          x: Math.min(pdfSelectionStart.x, point.x),
+          y: Math.min(pdfSelectionStart.y, point.y),
+          width: Math.abs(point.x - pdfSelectionStart.x),
+          height: Math.abs(point.y - pdfSelectionStart.y)
+        };
+        drawPdfOverlays();
+      });
+
+      function finishPdfSelection() {
+        if (!drawingPdfArea || !pdfSelectionDraft) return;
+        drawingPdfArea = false;
+        if (pdfSelectionDraft.width >= 2 && pdfSelectionDraft.height >= 2) {
+          const rectangles = pdfRects.get(pdfPageNumber) || [];
+          rectangles.push(pdfSelectionDraft);
+          pdfRects.set(pdfPageNumber, rectangles);
+          pdfUndoStack.push({ pageNumber: pdfPageNumber });
+          updatePdfControls();
+          imageInfo.textContent = `${pdfPageCount} 页 · 第 ${pdfPageNumber} 页已添加 ${rectangles.length} 处遮盖`;
+          setStatus("已添加白色遮盖区域。导出会栅格化页面，请检查框选范围是否覆盖完整。", "success");
+        }
+        pdfSelectionStart = null;
+        pdfSelectionDraft = null;
+        drawPdfOverlays();
+      }
+
+      pdfCanvas.addEventListener("pointerup", finishPdfSelection);
+      pdfCanvas.addEventListener("pointercancel", finishPdfSelection);
+
+      pdfUndoButton.addEventListener("click", () => {
+        const lastAction = pdfUndoStack.pop();
+        if (!lastAction) return;
+        const rectangles = pdfRects.get(lastAction.pageNumber) || [];
+        if (lastAction.rect) {
+          const index = rectangles.lastIndexOf(lastAction.rect);
+          if (index >= 0) rectangles.splice(index, 1);
+        } else {
+          rectangles.pop();
+        }
+        if (rectangles.length) pdfRects.set(lastAction.pageNumber, rectangles);
+        else pdfRects.delete(lastAction.pageNumber);
+        updatePdfControls();
+        renderPdfPage().catch((error) => setStatus(error.message, "error"));
+        setStatus("已撤销最后一处 PDF 遮盖。", "success");
+      });
+
+      clearPdfButton.addEventListener("click", () => {
+        pdfRects = new Map();
+        pdfUndoStack = [];
+        pdfSelectionDraft = null;
+        updatePdfControls();
+        renderPdfPage().catch((error) => setStatus(error.message, "error"));
+        setStatus("已清除全部 PDF 遮盖。");
+      });
+
+      previousPageButton.addEventListener("click", () => {
+        if (!pdfDocument || pdfPageNumber <= 1) return;
+        pdfPageNumber -= 1;
+        updatePdfControls();
+        renderPdfPage().catch((error) => setStatus(error.message, "error"));
+      });
+
+      nextPageButton.addEventListener("click", () => {
+        if (!pdfDocument || pdfPageNumber >= pdfPageCount) return;
+        pdfPageNumber += 1;
+        updatePdfControls();
+        renderPdfPage().catch((error) => setStatus(error.message, "error"));
+      });
+
+      exportPdfButton.addEventListener("click", exportPdf);
+
+      undoButton.addEventListener("click", () => {
+        const snapshot = undoStack.pop();
+        if (!snapshot) return;
+        context.putImageData(snapshot, 0, 0);
+        undoButton.disabled = undoStack.length === 0;
+        setStatus("已撤销上一步修复。", "success");
+      });
+
+      resetButton.addEventListener("click", () => {
+        if (!imageLoaded) return;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(sourceCanvas, 0, 0);
+        undoStack = [];
+        samplePoint = null;
+        undoButton.disabled = true;
+        setStatus("图片已恢复到刚载入时的状态。");
+      });
+
+      downloadButton.addEventListener("click", () => {
+        if (!imageLoaded) return;
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            setStatus("导出失败，请尝试使用较小的图片。", "error");
+            return;
+          }
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${imageFileName}-已修复.png`;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setStatus("修复图片已导出为 PNG。", "success");
+        }, "image/png");
+      });
+
+      stage.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        stage.classList.add("dragging");
+      });
+      stage.addEventListener("dragleave", (event) => {
+        if (!stage.contains(event.relatedTarget)) stage.classList.remove("dragging");
+      });
+      stage.addEventListener("drop", (event) => {
+        event.preventDefault();
+        stage.classList.remove("dragging");
+        if (event.dataTransfer.files.length) handleFile(event.dataTransfer.files[0]);
+      });
+
+      window.addEventListener("resize", () => {
+        updateCanvasDisplaySize();
+      });
+    })();
+  </script>
+</body>
+</html>
